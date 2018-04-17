@@ -5,7 +5,7 @@ import respond_to, json_params from require "lapis.application"
 import hmac_sha1 from require "lapis.util.encoding"
 import GithookLogs from require "models"
 import encode from require "cjson"
-import locate, autoload from require "locator"
+import locate, autoload, registry from require "locator"
 import settings from autoload "utility"
 import execute from locate "utility.shell"
 import insert, concat from table
@@ -33,15 +33,19 @@ hex_dump = (str) ->
 run_update = (branch) ->
   exit_codes, logs = {}, {}
   failure = false
-  for cmd in *{
-    {"git checkout #{branch} 2> /dev/stdout"}
-    {"git pull origin 2> /dev/stdout"}
-    {"git submodule init 2> /dev/stdout"}
-    {"git submodule update 2> /dev/stdout"}
-    {"code=0\nfor file in $(find . -type f -name \"*.moon\"); do moonc \"$file\" 2> /dev/stdout\ntmp=$?\nif [ ! $tmp -eq 0 ]; then code=$tmp\nfi; done\necho $code", false}
-    {"lapis migrate #{config._name} 2> /dev/stdout"}
-    {"lapis build #{config._name} 2> /dev/stdout"}
-  }
+
+  commands = registry.githook_commands branch, config._name
+  unless commands
+    commands = {
+      {"git checkout #{branch} 2> /dev/stdout"}
+      {"git pull origin 2> /dev/stdout"}
+      {"git submodule init 2> /dev/stdout"}
+      {"git submodule update 2> /dev/stdout"}
+      {"code=0\nfor file in $(find . -type f -name \"*.moon\"); do moonc \"$file\" 2> /dev/stdout\ntmp=$?\nif [ ! $tmp -eq 0 ]; then code=$tmp\nfi; done\necho $code", false}
+      {"lapis migrate #{config._name} 2> /dev/stdout"}
+      {"lapis build #{config._name} 2> /dev/stdout"}
+    }
+  for cmd in *commands
     code, output = execute unpack cmd
     insert exit_codes, code
     insert logs, output
