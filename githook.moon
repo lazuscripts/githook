@@ -118,16 +118,17 @@ class extends lapis.Application
       return render: locate "views.githook_get"
 
     POST: json_params =>
-      if config.githook_secret
+      secret = config.githook_secret or settings["githook.secret"]
+      if secret
         ngx.req.read_body!
         if body = ngx.req.get_body_data!
           local authorized
           if github_hash = @req.headers["X-Hub-Signature"]
-            authorized = const_compare "sha1=#{hex_dump hmac_sha1 config.githook_secret, body}", github_hash
+            authorized = const_compare "sha1=#{hex_dump hmac_sha1 secret, body}", github_hash
           elseif gogs_hash = @req.headers["X-Gogs-Signature"]
-            authorized = const_compare gogs_hash, hex_dump hmac_sha256 config.githook_secret, body
+            authorized = const_compare gogs_hash, hex_dump hmac_sha256 secret, body
           elseif @params.secret
-            authorized = const_compare @params.secret, config.githook_secret
+            authorized = const_compare @params.secret, secret
           unless authorized
             return unauthorized!
           if @params.ref == "refs/heads/#{@branch}"
