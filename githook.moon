@@ -2,9 +2,9 @@ lapis = require "lapis"
 config = require("lapis.config").get!
 
 import respond_to, json_params from require "lapis.application"
-import hmac_sha1 from require "lapis.util.encoding"
-import GithookLogs from require "models"
+import hmac_sha1, hmac_sha256 from require "lapis.util.encoding"
 import encode from require "cjson"
+import GithookLogs from require "models"
 import locate, autoload, registry from require "locator"
 import settings from autoload "utility"
 import execute from locate "utility.shell"
@@ -93,8 +93,17 @@ unauthorized = ->
     message: "invalid credentials or no credentials were sent"
   }
 
+invalid = (reason) ->
+  return status: 400, json: {
+    status: "invalid request"
+    message: reason
+  }
+
 class extends lapis.Application
   [githook: "/githook"]: respond_to {
+    before: =>
+      @branch = config.githook_branch or settings["githook.branch"] or "master"
+
     GET: =>
       unless settings["githook.allow_get"]
         return status: 405, json: {
@@ -105,37 +114,33 @@ class extends lapis.Application
       unless settings["githook.run_without_auth"]
         return unauthorized!
 
-      branch = config.githook_branch or settings["githook.branch"] or "master"
-      @results = run_update branch
+      @results = run_update(@branch)
       return render: locate "views.githook_get"
 
     POST: json_params =>
-      branch = config.githook_branch or settings["githook.branch"] or "master"
       if config.githook_secret
         ngx.req.read_body!
         if body = ngx.req.get_body_data!
-          authorized = const_compare "sha1=#{hex_dump hmac_sha1 config.githook_secret, body}", @req.headers["X-Hub-Signature"]
+          local authorized
+          if github_hash = @req.headers["X-Hub-Signature"]
+            authorized = const_compare "sha1=#{hex_dump hmac_sha1 config.githook_secret, body}", github_hash
+          elseif gogs_hash = @req.headers["X-Gogs-Signature"]
+            authorized = const_compare gogs_hash, hex_dump hmac_sha256 config.githook_secret, body
           unless authorized
             return unauthorized!
-          if @params.ref == "refs/heads/#{branch}"
-            return run_update branch
+          if @params.ref == "refs/heads/#{@branch}"
+            return run_update(@branch)
           elseif @params.ref == nil
-            return status: 400, json: {
-              status: "invalid request"
-              message: "'ref' not defined in request body"
-            }
+            return invalid "'ref' not defined in request body"
           else
-            return ignored branch
+            return ignored(@branch)
         else
-          return status: 400, json: {
-            status: "invalid request"
-            message: "no request body"
-          }
+          return invalid "no request body"
       elseif settings["githook.run_without_auth"]
-        if @params.ref == "refs/heads/#{branch}"
-          return run_update branch
+        if @params.ref == "refs/heads/#{@branch}"
+          return run_update(@branch)
         else
-          return ignored branch
+          return ignored(@branch)
       else
         return unauthorized!
     }
