@@ -48,8 +48,11 @@ run_update = (branch) ->
   for cmd in *commands
     code, output = execute unpack cmd
     insert exit_codes, code
-    insert logs, output
-    failure = true if code != 0
+    insert logs, cmd[1]
+    insert logs, "    #{output\gsub "\n", "\n    "}"
+    if code != 0
+      failure = true
+      break
 
   log = concat logs, "\n"
 
