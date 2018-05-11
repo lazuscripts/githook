@@ -13,7 +13,7 @@ import insert, concat from table
 const_compare = (string1, string2) ->
   local fail, dummy
 
-  for i = 1, math.max #string1, #string2
+  for i = 1, math.max #string1, #string2, 100
     if string1\sub(i,i) ~= string2\sub(i,i)
       fail = true
     else
@@ -126,6 +126,8 @@ class extends lapis.Application
             authorized = const_compare "sha1=#{hex_dump hmac_sha1 config.githook_secret, body}", github_hash
           elseif gogs_hash = @req.headers["X-Gogs-Signature"]
             authorized = const_compare gogs_hash, hex_dump hmac_sha256 config.githook_secret, body
+          elseif @params.secret
+            authorized = const_compare @params.secret, config.githook_secret
           unless authorized
             return unauthorized!
           if @params.ref == "refs/heads/#{@branch}"
